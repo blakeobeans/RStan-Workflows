@@ -16,7 +16,7 @@ output:
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE)
 library(rethinking)
 library(rstan)
 ```
@@ -26,21 +26,19 @@ rstan_options(auto_write = TRUE)
 options(mc.cores = parallel::detectCores())
 ```
 
-This is a collection of regressions done in Rstan. Regression is the bread and butter of statistical analysis and Bayesian regression is superior due to the use of constraining priors and the generative ability of the model. Due to the Hamiltonian Monte Carlo algorithm, Stan is arguably the best way to do Bayesian regression. 
-
-However, coding a regression model in Stan is not easy for a beginner and while there are plenty of advanced resources, there are few introductory resources. One exception is the excellent course "Statistical Rethinking" which uses and the *map2stan()* wrapper in the course's R package eponomously called *rethinking*. This kernel is an attempt to break away from the wrapper and futher understand Rstan, while still being able to verify results and compare models using *rethinking*'s *stancode()* function. 
+This computational essay is a collection of best practice analysis using Stan and RStan. It assumes that the reader understands the basics of regression and Bayesian statistics. In order to keep things brief, some later examples do not include all of the recommended analysis done in earlier examples.
 
 #Simple Linear Regression With One Predictor
 
 (Rethinking, Ch 4)
 
-This module covers the basics of regression using RStan.
+##Data
 
-##Import Data
+This is a cross-sectional data set with two variables: height and weight. The measurements are for adults only. 
 
-We are predicting height as a function of weight. We are centering weight around the sample mean. 
+We are predicting height as a function of weight. We are centering weight around the sample mean, hence the use of xbar. 
 
-In order to separate the data from the analysis, it is best to export the data from R using the *stan_rdump()* function. We then read the data in using the *read_rdump* function. All of this is done in one code chunk.
+In order to separate the data from the analysis, it is best to export the data from R using the *stan_rdump()* function in the *RStan* package. Note that each variable is included separately. After exporting the data, we then read it in prior to analysis using the *read_rdump* function. 
 
 ```{r}
 setwd("./2. linear regression")
@@ -55,17 +53,21 @@ stan_rdump(c("height", "N", "weight", "xbar"), file="linear_reg.data.R")
 data <- read_rdump("linear_reg.data.R") #import data
 ```
 
-##Model Design
+##Prior Predictive Simulation
 
-###Prior Predictive Simulation
+**Prior predictive simulation** (PPS) falls under the heading of *model design*. For PPS, the question is- what are the reasonable prior assumptions on the  regression coefficients? 
 
-What are the reasonable prior assumptions on the beta coefficients? There is no wrong answer per se, but we want to *constrain* our priors to a sensible range and make them explicity in our analysis. We also don't want to look at our data when forming our prior.
+A few general tips: there is no wrong answer except to skip this step. Note that we're discussing priors on the coefficients, not the variables themselves. Generally, we want to *constrain* our priors to a sensible range- we wouldn't expect weight to be negatively correlated with height, for example. Think of the relation of the prior to any transformations for the data. We don't want to look at our data when forming the prior. We want to explicity mention our prior in the analysis. 
 
-The intercept will be the average height. Why? Because xi is centered on x-bar, when xi=x-bar, alpha = mu, and mu is the average height. We can assume based on prior knowledge that that the average height is around 178 cm We can also posit that height is normally distributed with a sd of 20 cm.
+The **intercept** represents the average height because xi is centered on x-bar. Therefore, we can think of the prior as the distribution of heights- ie. the variable itself. (In the regression equation, when xi=x-bar, beta drops out and alpha = mu, the average height.) Based on prior knowledge, we can posit a normal prior with a mean of 178 cm and an sd of 20. We can plot this distrubition.
 
-For the slope, we can assume that weight and height are positively correlated, but the strength of the association is unknown. Therefore, we can use the log-normal prior distribution to restrict the effects to positive values.
+```{r}
+N <- 100 # 100 lines
+a <- rnorm( N , 178 , 20 ) #prior for alpha
+plot(density(a), main = "Prior for Alpha", xlab = "Height in cm")
+```
 
-For a **prior predictive simulation**, we sample from the prior distribution. Simulates *N* regression lines for the effect of weight on height. 
+For the **slope coefficient**, we can assume that weight and height are positively correlated, but the strength of the association is unknown. Therefore, we can use the log-normal prior distribution to restrict the coefficent to positive values.
 
 ```{r}
 set.seed(2971)
@@ -82,27 +84,31 @@ for (i in 1:N )
     from=min(d$weight), to=max(d$weight), add=TRUE, col=col.alpha("black",0.2))
 ```
 
-##Stan Script
+##Stan Model
 
-The Stan script is written outside of the environment and is read in using the code below.
+The Stan script is written outside of the environment and is read in using *readLines* in base R.
 
-There are three necessary blocks and one optional block. The three necessary blocks are data, parameters and model. They are always specified in that order.
+In a Stan script, there are three necessary "blocks" and one optional block. The three necessary blocks are data, parameters and model. They are always specified in that order.
 
-The *data block* specifies the data. We can add a lower bound on the integers, such as with N. Note how the length of the variables are specified. 
+The *data block* specifies the data. It should correspond to the data set we created in the earlier section. It includes vectors- the variables- as well as individual scalars. We can add a lower bound on the scalars, such as with N. Note how the length of the variables are specified. 
 
-The *parameters block* specifies the unobserved variables. We can put a lower bound on these as well.
+The *parameters block* specifies the unobserved variables that we'd like to estimate, in this case, alpha, beta and sigma. A lower bound is placed on sigma because there is no negative standard deviation.
 
-The bulk of the work is in the *model block.* This is a *full model* meaning everything is specified. In order for the code to work, we have to specify any variables are we are creating in the model. The variable mu is the mean predicted reponse for the regression which is also the likelihood function. Recall that regressions n of the response), the slope and the intercept coefficients. We then use a for loop (not always required) to specify the likelihood function for each observation *i*. Finally, we model the distribution for the response, height,- a normal distribution.
+The bulk of the work is in the *model block.* This is a *full model* meaning everything is specified. The model is laid out in a few sections.
 
-The *generated quantities block* gives the distribution of the expectation for each weight/height combo (mu_i) as well as the predicted value for each weight/height combo (y_i).
+First, we have to specify any variables are created within the model. In this case, the variable mu is the mean expected reponse for the regression.
+Second, we lay out our priors.
+Third, we specify the regression function. In this case, it's done with a for loop. While these loops are optional, personally it helps clarify the math.
+Finally, we lay out the likelihood function. We should read this as the height *for each observation* is a function of the mean *for each observation* with shared variance sigma.
+
+The optional *generated quantities block* provides other quantities in the output, ie. other posterior distributions. There are generally two outputs we're interested in: the expectations and the predictions. For each observation, we want the distribution of the expectation for each weight/height combo (mu_i). Also, for each observation, we want the distribution of the predicted value for each weight/height combo (y_i). The latter will have a wider variance. The *normal_rng* function is used to sample from the likelihood.
 
 ```{r}
 setwd("./2. linear regression")
 writeLines(readLines("linear_regression.stan"))
 ```
 
-
-We then execute the model. We can set the seed, the number of chains, the number of warmups and the number of iterations. Stan runs in C (it's faster than R) and R stores the output of the model in the Stan object called "fit". Let's sample from the posterior!
+Time to execute the model. We can set the seed, the number of chains, the number of warmups and the number of iterations. Note that the number of posterior samples is equal to the number of iterations minus the number of warmups, in this case, 9000. Stan runs in C (C is fast) and R stores the output of the model in the Stan object called "fit". Let's sample from the posterior!
 
 ```{r}
 setwd("./2. linear regression")
@@ -111,19 +117,35 @@ fit <- stan(file='linear_regression.stan', data=data, seed=194838, chains = 1, w
 
 ##Model Checking
 
-We can get summary statistics for the posterior distributions. We can see that the average height is 154.6 and that for each additional kg of weight, height increases by .9 cm. The standard deviation of the expected height is 5.1 cm.
+Stanfit objects are lists that contain lots of information, but primarily they are just samples from the posterior.
+
+### Parameters Summary Table
+
+We can get summary statistics for variables of interest using *print()* and specifying the variables of interest. We can see that the average height is 154.6 and that for each additional kg of weight, height increases by .9 cm. The standard deviation of the expected height is 5.1 cm.
 
 ```{r}
 print(fit, c("a", "b", "sigma")) #overview
 ```
 
-When we convert the Stan object to a data frame, we get the individual samples from the posterior for each parameter and generated quantity for each iteration. For 10,000 iterations (subtracting 1000 warmup iterations) we get 9,000 samples from the posterior for each parameter and generated quantity. There are 3 parameters: alpha, beta and sigma, as well as 352 observations and thus 352 mu_i and 352 y_i for 707 columns. There is one more column for lp__ which is a measure of the fit of the model (log_posterior). More on that later.
+### Plot Parameters
+
+We can plot the parameters using *plot()*. The standard errors are so low that the distributions are laughably narrow.
+
+```{r}
+plot(fit, pars = c("a", "b", "sigma"), ci_level = .95, show_density = TRUE) + 
+  ggtitle("Posterior Distribution of Parameters")
+```
+
+
+### Analyzing Posteriors
+
+Converting a fitstan object to a data frame allows us to get under the hood. We get the all of the individual samples from the posterior for each parameter and generated quantity. There are 3 parameters: alpha, beta and sigma, as well as 352 observations and thus 352 mu_i and 352 y_i for 707 columns. There is one more column for lp__ which is a measure of the fit of the model (log_posterior). More on that later.
 
 ```{r}
 posterior <- as.data.frame(fit)
 dim(posterior)
 ```
-###Posterior Distribution of the Slope Coefficient 
+#### Posterior Distribution of the Slope Coefficient 
 
 We can plot the distribution of any of the parameters by plotting the samples. Below is the distribution of the slope coefficient. We can also show the mean and the shaded interval that contains 95% of the density.
 
@@ -135,7 +157,7 @@ shade(density(posterior$b), c(b.HPDI[[1]], b.HPDI[[2]]))
 abline(v=b.mean)
 ```
 
-###Visualizing the Posterior Regression Line
+#### Visualizing the Posterior Regression Line
 
 The code below plots the data, a regression line that uses the mean of the distributions for alpha and beta, and 20 individual regression lines using 20 samples from the posterior.
 
@@ -149,7 +171,7 @@ for ( i in 1:20 )
 ```
 
 
-###Comparing the Prior and Posterior Regression Lines
+### Comparing the Prior and Posterior Regression Lines
 
 Below we plot 20 priors (using the same code as before), as well as 20 posterior samples and the mean posterior regression line.
 
@@ -160,9 +182,8 @@ N <- 20 # 100 lines
 a <- rnorm( N , 178 , 20 ) #prior for alpha
 b <- rlnorm( N , 0 , 1 ) #log normal prior for beta, to restrict effect of weight on height to be positive
 #plot
-plot(NULL, xlim=range(d$weight), ylim=c(-100,400), xlab="weight", ylab="height" )
+plot(NULL, xlim=range(d$weight), ylim=c(-100,400), xlab="weight", ylab="height", main= "Prior and Posterior Regression Line" )
 abline(h=0, lty=2); abline(h=272, lty=1, lwd=0.5)
-mtext("b ~ dlnorm(0,10)")
 xbar <- mean(d$weight)
 for (i in 1:N ) 
   curve(a[i] + b[i]*(x - xbar),
@@ -180,11 +201,11 @@ curve(mean(posterior$a) + mean(posterior$b)*(x-xbar), col = 'red', add = TRUE)
 
 ###Confidence intervals and the Link Function
 
-Assuming you're familiar with the CI for a regression, we use a slightly different method when running Stan. Note that white the rethinking package offers the link function, but it only works on *map2stan* objects, not *stanfit* objects. Instead, we'll write our own function.
+Assuming you're familiar with the CI for a regression, we use a slightly different method when running Stan. Note that while the *rethinking* package offers the link function, but it only works on *map2stan* objects, not *stanfit* objects. Instead, we'll write our own function.
 
 First, we define a function, in this case, the regression function.
 
-Then, we want to introduce the data we want to predict from. This can be the existing data for which we know the response or we could have new data where we do not know the response. Or, if we want to build a confidence interval, we use the domain of possible weights in a sequence. 
+Then, we want to introduce the data we want to predict from. This can be the existing data for which we know the response, or we could have new data where we do not know the response. Or, if we want to build a confidence interval, we use the domain of possible weights in a sequence. 
 
 Finally, we use *sapply()* to run the weight sequence through the function.
 
@@ -194,7 +215,7 @@ That's it! We have our predictions. Lastly, we calculate the mean and prediction
 mu.link <- function(weight) posterior$a + posterior$b*( weight - xbar )
 weight.seq <- seq( from=25 , to=70 , by=1 )
 mu <- sapply( weight.seq , mu.link )
-dim(mu) #same rows as iterations; same column as sequence
+#dim(mu) #number of rows = number of samples; # of columns = number of observations in sequence
 #calculate mean and HDPI
 mu.mean <- apply( mu , 2 , mean )
 mu.PI <- apply( mu , 2 , PI , prob=0.89 )
@@ -204,17 +225,7 @@ lines( weight.seq , mu.mean ) # plot the posterior regression line
 shade( mu.PI , weight.seq ) # plot a shaded region for 89% HPDI
 ```
 
-Alternatively, you cancreate a matrix object with a column for each X value and as many rows from our posterior as we desire. For each row, run each x value through the regression equation and store it in the correct cell of the matrix.
 
-```{r, eval = FALSE}
-weight.seq <- seq( from=25 , to=70 , by=1 )
-matrix_rows = nrow(posterior)
-matrix_cols = length(weight.seq)
-obj <- matrix(0, nrow=matrix_rows, ncol=matrix_cols)
-for (i in 1:matrix_rows)
-  for (j in 1:matrix_cols)
-    obj[i,j] <- (samples$a[i] + samples$b[i]*(weight.seq[j]-xbar))
-```
 
 #### Univariate Conditional Distribution for the Expectation of Y
 
@@ -224,7 +235,6 @@ You can also use the link function to plot the univariate distribution for a giv
 mu.link <- function(weight) posterior$a + posterior$b*( weight - xbar )
 weight_80 <- 80
 mu_80 <- sapply( weight_80 , mu.link )
-dim(mu_80)
 #calculate mean and HDPI
 mu.80.mean <- apply( mu_80 , 2 , mean )
 mu.80.PI <- apply( mu_80 , 2 , PI , prob=0.89 )
@@ -237,21 +247,21 @@ abline(v=mu.80.mean)
 
 ### Prediction Intervals and the Sim function
 
-Also known as posterior predictive simulation, which is estimating the range of possible responses to new data or seeing how well your existing data fits. 
+Also known as *posterior predictive simulation*, which is estimating the range of possible responses to new data or seeing how well your existing data fits. 
 
-The key idea behind a prediction interval is that we estimate the range of possible values, incorporating not only the uncertainty in the expected value but the uncertainty in the distribution of the response.
+The key idea behind a prediction interval is that we estimate the range of possible values, incorporating not only the uncertainty in the expected value but the uncertainty in the likelihood function.
 
-Rather than sampling from the likelihood for the expected value (as with link), for each weight in the sequence, we sample from the distribution for the heights. We simulate draws from this distribution using the rnorm function where the mean is the likelihood function and the sd is the posterior estimated sd.
+Rather than sampling from the regression (as with link), we sample from the likelihood for the heights. We simulate draws from this distribution using the *rnorm()* function where the mean is the likelihood function and the sd is the posterior estimated sd.
 
 ```{r}
 weight.seq <- 25:70
-sim.height <- sapply( weight.seq , function(weight)
-  rnorm(
-    n=nrow(posterior) ,
-    mean=posterior$a + posterior$b*( weight - xbar ) ,
-    sd=posterior$sigma ) )
+sim.height <- sapply( weight.seq , function(weight) #see function below
+    rnorm(
+      n=nrow(posterior) ,
+      mean=posterior$a + posterior$b*( weight - xbar ) ,
+      sd=posterior$sigma ) 
+    )
 #summary stats
-dim(sim.height)
 height.PI <- apply( sim.height , 2 , PI , prob=0.89 ) #you can also use quartile
 height.mean <- apply( sim.height , 2 , mean , prob=0.89 )
 #
@@ -262,6 +272,7 @@ shade( mu.PI , weight.seq ) # confidence interval
 ```
 
 ####Univariate Conditional Distribution of for the Predicted Value of Y
+
 
 ```{r}
 weight.80 <- 80
@@ -286,7 +297,7 @@ abline(v=y.80.mean)
 
 Correlation between predictors is the norm. Multiple regression is about distinguising correlations and assoication from evidence for causation. This means building DAGs, thinking about confounders, etc.
 
-##Import data
+##Data
 
 In this example, we're looking at state-level data as to whether the divorce rate is predicted by the average age of marriage and the proportion of married individuals in the state.
 
@@ -303,7 +314,7 @@ data <- read_rdump("linear_reg.data.R")
 ```
 
 
-##Stan Script
+##Stan Model
 
 In this case, we're going to standardize our data with the additional **transformed data** block. This can be done in R, but it's better to do in Stan.
 
@@ -323,13 +334,6 @@ fit <- stan(file='stan_model.stan', data=data, seed=194838, chains = 1, warmup=1
 
 ```{r}
 print(fit, c("a", "bM", "bA", "sigma"))
-```
-
-### Plot Coefficients
-
-```{r}
-plot(fit, pars = c("a", "bA", "bM", "sigma"), ci_level = .8, show_density = TRUE) + 
-  ggtitle("Posterior Distribution of Coefficients")
 ```
 
 ```{r}

@@ -1,8 +1,8 @@
 data{
   int<lower=1> N;
   vector[N] divorce;
-  vector[N] age;
-  vector[N] marriage_proportion;
+  vector[N] median_age_marriage;
+  vector[N] state_marriage_proportion;
 }
 
 transformed data{
@@ -10,8 +10,8 @@ transformed data{
   vector[N] A_norm;
   vector[N] M_norm;
   D_norm = (divorce-mean(divorce))/sd(divorce);
-  A_norm = (age-mean(age))/sd(age);
-  M_norm = (marriage_proportion-mean(marriage_proportion))/sd(marriage_proportion);
+  A_norm = (median_age_marriage-mean(median_age_marriage))/sd(median_age_marriage);
+  M_norm = (state_marriage_proportion-mean(state_marriage_proportion))/sd(state_marriage_proportion);
 }
 
 
@@ -38,3 +38,4 @@ generated quantities{
     }
     
 }
+

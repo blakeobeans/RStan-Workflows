@@ -124,10 +124,10 @@ Stanfit objects are lists that contain lots of information, but primarily they a
 We can get summary statistics for variables of interest using *print()* and specifying the variables of interest. We can see that the average height is 154.6 and that for each additional kg of weight, height increases by .9 cm. The standard deviation of the expected height is 5.1 cm.
 
 ```{r}
-print(fit, c("a", "b", "sigma")) #overview
+print(fit, c("a", "b", "sigma"),  probs = c(0.10, 0.5, 0.9)) #overview
 ```
 
-### Plot Parameters
+### Parameter Posterior Distributions
 
 We can plot the parameters using *plot()*. The standard errors are so low that the distributions are laughably narrow.
 
@@ -136,18 +136,14 @@ plot(fit, pars = c("a", "b", "sigma"), ci_level = .95, show_density = TRUE) +
   ggtitle("Posterior Distribution of Parameters")
 ```
 
-
-### Analyzing Posteriors
-
-Converting a fitstan object to a data frame allows us to get under the hood. We get the all of the individual samples from the posterior for each parameter and generated quantity. There are 3 parameters: alpha, beta and sigma, as well as 352 observations and thus 352 mu_i and 352 y_i for 707 columns. There is one more column for lp__ which is a measure of the fit of the model (log_posterior). More on that later.
+We can plot the distribution of any of the parameters by plotting the samples. Converting a fitstan object to a data frame allows us to access the individual samples. We get the all of the individual samples from the posterior for each parameter and generated quantity. There are 3 parameters: alpha, beta and sigma, as well as 352 observations and thus 352 mu_i and 352 y_i for 707 columns. There is one more column for lp__ which is a measure of the fit of the model (log_posterior). More on that later.
 
 ```{r}
 posterior <- as.data.frame(fit)
 dim(posterior)
 ```
-#### Posterior Distribution of the Slope Coefficient 
 
-We can plot the distribution of any of the parameters by plotting the samples. Below is the distribution of the slope coefficient. We can also show the mean and the shaded interval that contains 95% of the density.
+Below is the distribution of the slope coefficient. Note that it should match the plot above. We can also show the mean and the shaded interval that contains 95% of the density.
 
 ```{r}
 b.mean <- mean(posterior$b)
@@ -157,23 +153,9 @@ shade(density(posterior$b), c(b.HPDI[[1]], b.HPDI[[2]]))
 abline(v=b.mean)
 ```
 
-#### Visualizing the Posterior Regression Line
+### Prior and Posterior Coefficients
 
-The code below plots the data, a regression line that uses the mean of the distributions for alpha and beta, and 20 individual regression lines using 20 samples from the posterior.
-
-```{r}
-plot(d$height ~ d$weight, col=rangi2)
-curve(mean(posterior$a) + mean(posterior$b) * (x-xbar), add = TRUE, col = 'red') #x not specified... weird...
-#add more lines
-samples <- posterior[1:20,]
-for ( i in 1:20 )
-  curve( samples$a[i] + samples$b[i]*(x-xbar), col=col.alpha("black",0.3) , add=TRUE)
-```
-
-
-### Comparing the Prior and Posterior Regression Lines
-
-Below we plot 20 priors (using the same code as before), as well as 20 posterior samples and the mean posterior regression line.
+We can compare the prior and posterior for the slope coefficient. Below we plot 20 priors (using the same code as before), as well as 20 posterior samples and the mean posterior regression line.
 
 ```{r}
 ###code from before (the prior)
@@ -197,9 +179,21 @@ for ( i in 1:20 )
 curve(mean(posterior$a) + mean(posterior$b)*(x-xbar), col = 'red', add = TRUE) 
 ```
 
-## Two key functions- Link and Sim
+### Posterior Regression Lines
 
-###Confidence intervals and the Link Function
+The code below plots the data, a regression line that uses the mean of the distributions for alpha and beta, and 20 individual regression lines using 20 samples from the posterior.
+
+```{r}
+plot(d$height ~ d$weight, col=rangi2)
+curve(mean(posterior$a) + mean(posterior$b) * (x-xbar), add = TRUE, col = 'red') #x not specified... weird...
+#add more lines
+samples <- posterior[1:20,]
+for ( i in 1:20 )
+  curve( samples$a[i] + samples$b[i]*(x-xbar), col=col.alpha("black",0.3) , add=TRUE)
+```
+
+
+### Confidence intervals and the Link Function
 
 Assuming you're familiar with the CI for a regression, we use a slightly different method when running Stan. Note that while the *rethinking* package offers the link function, but it only works on *map2stan* objects, not *stanfit* objects. Instead, we'll write our own function.
 
@@ -225,8 +219,6 @@ lines( weight.seq , mu.mean ) # plot the posterior regression line
 shade( mu.PI , weight.seq ) # plot a shaded region for 89% HPDI
 ```
 
-
-
 #### Univariate Conditional Distribution for the Expectation of Y
 
 You can also use the link function to plot the univariate distribution for a given value of x.
@@ -245,7 +237,7 @@ abline(v=mu.80.mean)
 ```
 
 
-### Prediction Intervals and the Sim function
+### Prediction Intervals and the Sim Function
 
 Also known as *posterior predictive simulation*, which is estimating the range of possible responses to new data or seeing how well your existing data fits. 
 
@@ -271,7 +263,7 @@ shade( height.PI , weight.seq ) # prediction interval
 shade( mu.PI , weight.seq ) # confidence interval
 ```
 
-####Univariate Conditional Distribution of for the Predicted Value of Y
+#### Univariate Conditional Distribution of for the Predicted Value of Y
 
 
 ```{r}
@@ -299,24 +291,24 @@ Correlation between predictors is the norm. Multiple regression is about disting
 
 ##Data
 
-In this example, we're looking at state-level data as to whether the divorce rate is predicted by the average age of marriage and the proportion of married individuals in the state.
+In this example, we're looking at cross-sectional state-level data as to whether the divorce rate is predicted by the average age of marriage and the proportion of married individuals in the state. As there are 50 states, there are 50 observations.
 
 ```{r}
 setwd("./3. Multivariate Continuous")
 data(WaffleDivorce)
 d <- WaffleDivorce
-age <- as.numeric(d$MedianAgeMarriage)
+median_age_marriage <- as.numeric(d$MedianAgeMarriage)
 divorce <- as.numeric(d$Divorce)
 N <- length(d$Divorce)
-marriage_proportion <- as.numeric(d$Marriage) #proportion
-stan_rdump(c("divorce", "age", "N", "marraige_proportion"), file="linear_reg.data.R")
+state_marriage_proportion <- as.numeric(d$Marriage) #proportion
+stan_rdump(c("divorce", "median_age_marriage", "N", "state_marriage_proportion"), file="linear_reg.data.R")
 data <- read_rdump("linear_reg.data.R")
 ```
 
 
 ##Stan Model
 
-In this case, we're going to standardize our data with the additional **transformed data** block. This can be done in R, but it's better to do in Stan.
+In this case, we're going to standardize our data with the additional **transformed data** block. This can be done in R, but it's arguably better to do in Stan.
 
 Because our variables are standardized, the intercept should be close to 0 and the slopes have a "sd" interpretation- a slope of 1 suggests a 1 sd increase in X leads to a 1 sd increase in y. The priors reflect this.
 
@@ -332,21 +324,13 @@ fit <- stan(file='stan_model.stan', data=data, seed=194838, chains = 1, warmup=1
 
 ## Model Checking
 
-```{r}
-print(fit, c("a", "bM", "bA", "sigma"))
-```
-
-```{r}
-posterior <- as.data.frame(fit)
-```
-
-With multivariate regression, there are three additional types of plots: predictor residual plots, counterfactual plots and posterior predictive plots.
+With multivariate regression, there are three additional types of plots: predictor residual plots, counterfactual plots and posterior predictive plots. These plots focus on the ability to "statistically control" variables within a model.
 
 ### Predictor Residual Plot
 
-Unlike a standard residual plot, a *predictor residual plot* plots the residuals for a single predictor against the response. It shows the average prediction error after statistically adjusting for the predictor of interest. To compute the predictor residuals for one predictor, just re-run the model excluding the predictor of interest. In the example below, we want the residuals after factoring out marriage.
+A **predictor residual plot** (PRP) plots the residuals for a single predictor against the response. A PRP shows the average prediction error after statistically adjusting for the predictor(s) of interest. You can think of it as a residual plot where you select which variables are endogenous to the model. It allows you to measure the "ceteris paribus" association between a predictor(s) and the response. 
 
-You can use this technique more generally for one or more predictors.
+To compute the predictor residuals, re-run the model excluding the predictor(s) of interest. In the example below, we want to see the "ceteris paribus" response of the divorce rate to the state-level marriage proportion, adjusting for the median age of marraige.
 
 ```{r}
 setwd("./3. Multivariate Continuous")
@@ -354,57 +338,55 @@ writeLines(readLines("stan_model2.stan"))
 fit2 <- stan(file='stan_model2.stan', data=data, seed=194838, chains = 1, warmup=1000, iter=10000)
 ```
 
-You can think of this plot as displaying the linear relationship between divorce and marriage rates, having
-statistically “controlled” for median age of marriage. (134) So States to the right of the vertical line have higher marriage rates than expected. The regression line demonstrates little relationship between divorce and marriage rates.
+We use a link function to plug in our data and calculate the mean effect of the median age of marriage in each state. Then - and this is key - we subtract this mean effect from the state-level marriage proportion to create the predictor residuals.
+
+We then plot the divorce rate against the predictor residuals, along with a line of best fit and a regression (ie. confidence) interval. You can think of the plot as a 2 x 2 matrix, for example, states to the right of the vertical line and above the regression line have higher marriage rates than expected and higher divorce rates. Overall, we do not see a strong association between state-level marriage proportions and divorce rates. (Note: there is a misalignment in the regression line and the regression interval- not sure why.)
 
 
 ```{r}
 posterior2 <- as.data.frame(fit2)
+#create link function
 mu.link <- function(x) posterior2$a + posterior2$bA*(x)
 mu <- sapply(as.numeric(scale(d$MedianAgeMarriage)), mu.link)
-mu_mean <- apply(mu, 2, mean)
-mu_resid <- as.numeric(scale(d$Marriage)) - mu_mean
-mu.PI <- apply( mu , 2 , HPDI , prob=0.89 )
+  #summary stasitics for median 
+  mu_mean <- apply(mu, 2, mean)
+  mu_resid <- as.numeric(scale(d$Marriage)) - mu_mean
+  mu.PI <- apply( mu , 2 , HPDI , prob=0.9 )
 #plot
 plot(as.numeric(scale(d$Divorce)) ~ mu_resid, main = 'Predictor Residual Plot', xlab="Marriage rate residuals", ylab = "Divorce Rate (std)")
 abline(lm(as.numeric(scale(d$Divorce)) ~ mu_resid), col = 'red') #x not specified... weird...
 shade( mu.PI , as.numeric(scale(d$MedianAgeMarriage)) ) # plot a shaded region for 89% HPDI
-abline(v = 0)
+abline(v = 0, lty = 2)
 ```
 
 
 ###Counterfactual Plots
 
-A second sort of inferential plot displays the implied predictions of the model. I call these plots counterfactual, because they can be produced for any values of the predictor variables you like, even unobserved or impossible combinations like very high median age of marriage and very high marriage rate.
+At its simplist level, a **counterfactual plot** is similar to a predictor residual plot in that is allows for statistical control of the other predictor(s). The only difference is that instead of looking at the residuals, we look at the "ceteris paribus" effect of the predictor on the value of the response.
 
-The simplest use of a counterfactual plot is to see how the predictions change as you
-change only one predictor at a time. This means holding the values of all predictors constant,
-except for a single predictor of interest. Such predictions will not necessarily look like
-your raw data—they are counterfactual after all—but they will help you understand the implications
-of the model.
+In order to create a counterfactual plot, we set the "controlled for" variables as equal to the mean response, or, if the data is standardized, 0. For the "ceteris paribus" variable(s), we can take as inputs the available data, or unobserved/impossible extrapolations, etc.
 
 ```{r}
+posterior <- as.data.frame(fit)
 mu.link <- function(A, M) posterior$a + posterior$bA*(A) + posterior$bM * M
 # prepare new counterfactual data
 M_seq <- seq( from=-2 , to=3 , length.out=30 )
 pred_data <- data.frame( M = M_seq , A = 0 )
-#compute counterfactual mean divorce (mu)
+#compute counterfactual expected divorce rate (mu)
 mu <- mapply(mu.link, M = pred_data$M, A = pred_data$A) #note use of mapply
-mu_mean <- apply( mu , 2 , median )
-mu_PI <- apply( mu , 2 , PI )
-#compute counterfactual predicted divorce (y)
+  mu_mean <- apply( mu , 2 , median )
+  mu_PI <- apply( mu , 2 , PI )
+#compute counterfactual predicted divorce rate (y)
 sim.response <- mapply(function(A, M)
   rnorm(
     n=nrow(posterior) ,
     mean=posterior$a + posterior$bA*(A) + posterior$bM * M,
     sd=posterior$sigma ), M = pred_data$M, A = pred_data$A   )
-#summary stats
-dim(sim.response)
-D_PI <- apply( sim.response , 2 , PI , prob=0.89 ) #you can also use quartile
+D_PI <- apply( sim.response , 2 , PI , prob=0.89 ) 
 # display predictions, hiding raw data with type="n"
-plot( as.numeric(scale(d$Divorce)) ~ as.numeric(scale(d$Marriage)) , data=d , type="n",
+plot( as.numeric(scale(d$Divorce)) ~ as.numeric(scale(d$Marriage)) , data=d,
       xlab = "Marriage rate (standardized)", ylab = "Divorce rate (standardized)")
-mtext( "Median age marriage (std) = 0" )
+mtext( "Counterfactual Effect of Proportion Married on Divorce Rate" )
 lines( M_seq , mu_mean )
 shade( mu_PI , M_seq )
 shade( D_PI , M_seq )
@@ -414,22 +396,7 @@ shade( D_PI , M_seq )
 
 ###Posterior Prediction Plot
 
-In addition to understanding the posterior distribution of the parameters, it’s important to check the model’s implied predictions against the observed data. 
-
-Did the model correctly approximate the posterior distribution? Golems do make
-mistakes, as do golem engineers. Errors can be more easily diagnosed by comparing
-implied predictions to the raw data. Some caution is required, because not all
-models try to exactly match the sample.
-
-How does the model fail? All models are useful fictions, so they always fail in some
-way. Sometimes, the model fits correctly but is still so poor for our purposes that it
-must be discarded. More often, a model predicts well in some respects, but not in
-others. By inspecting the individual cases where the model makes poor predictions,
-you might get an idea of how to improve the model. The difficulty is that this mode
-is essentially creative and relies upon the analysts domain expertise. It also creates
-risks of chasing noise in the sample, a topic we’ll focus on in later chapters.
-
-Note this is for the dependent variable.
+A **posterior prediction plot** measures the relationship between the predicted response and the actual response. It includes all of the "raw data" predictors in the model.
 
 ```{r}
 mu.link <- function(A, M) posterior$a + posterior$bA*(A) + posterior$bM * M
@@ -452,7 +419,6 @@ xlab="Observed divorce" , ylab="Predicted divorce" )
 abline( a=0 , b=1 , lty=2 )
 for ( i in 1:nrow(d) ) lines( rep(scale(d$Divorce)[i],2) , mu_PI[,i] , col=rangi2 )
 ```
-
 
 
 #Multivariate Regression with a Single Categorical Variable

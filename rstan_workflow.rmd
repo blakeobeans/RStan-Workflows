@@ -57,9 +57,9 @@ data <- read_rdump("linear_reg.data.R") #import data
 
 **Prior predictive simulation** (PPS) falls under the heading of *model design*. For PPS, the question is- what are the reasonable prior assumptions on the  regression coefficients? 
 
-A few general tips: there is no wrong answer except to skip this step. Note that we're discussing priors on the coefficients, not the variables themselves. Generally, we want to *constrain* our priors to a sensible range- we wouldn't expect weight to be negatively correlated with height, for example. Think of the relation of the prior to any transformations for the data. We don't want to look at our data when forming the prior. We want to explicity mention our prior in the analysis. 
+A few general tips: there is no wrong answer except to skip this step. Note that we're discussing priors on the coefficients, not the variables themselves. Generally, we want to *constrain* our priors to a sensible range- we wouldn't expect weight to be negatively correlated with height, for example. Think of the relation of the prior to any transformations for the data. We don't want to look at our data when forming the prior. We want to explicitly mention our prior in the analysis. 
 
-The **intercept** represents the average height because xi is centered on x-bar. Therefore, we can think of the prior as the distribution of heights- ie. the variable itself. (In the regression equation, when xi=x-bar, beta drops out and alpha = mu, the average height.) Based on prior knowledge, we can posit a normal prior with a mean of 178 cm and an sd of 20. We can plot this distrubition.
+The **intercept** represents the average height because xi is centered on x-bar. Therefore, we can think of the prior as the distribution of heights- IE. the variable itself. (In the regression equation, when xi=x-bar, beta drops out and alpha = mu, the average height.) Based on prior knowledge, we can posit a normal prior with a mean of 178 cm and an sd of 20. We can plot this distribution.
 
 ```{r}
 N <- 100 # 100 lines
@@ -67,7 +67,7 @@ a <- rnorm( N , 178 , 20 ) #prior for alpha
 plot(density(a), main = "Prior for Alpha", xlab = "Height in cm")
 ```
 
-For the **slope coefficient**, we can assume that weight and height are positively correlated, but the strength of the association is unknown. Therefore, we can use the log-normal prior distribution to restrict the coefficent to positive values.
+For the **slope coefficient**, we can assume that weight and height are positively correlated, but the strength of the association is unknown. Therefore, we can use the log-normal prior distribution to restrict the coefficient to positive values.
 
 ```{r}
 set.seed(2971)
@@ -96,19 +96,19 @@ The *parameters block* specifies the unobserved variables that we'd like to esti
 
 The bulk of the work is in the *model block.* This is a *full model* meaning everything is specified. The model is laid out in a few sections.
 
-First, we have to specify any variables are created within the model. In this case, the variable mu is the mean expected reponse for the regression.
+First, we have to specify any variables are created within the model. In this case, the variable mu is the mean expected response for the regression.
 Second, we lay out our priors.
 Third, we specify the regression function. In this case, it's done with a for loop. While these loops are optional, personally it helps clarify the math.
 Finally, we lay out the likelihood function. We should read this as the height *for each observation* is a function of the mean *for each observation* with shared variance sigma.
 
-The optional *generated quantities block* provides other quantities in the output, ie. other posterior distributions. There are generally two outputs we're interested in: the expectations and the predictions. For each observation, we want the distribution of the expectation for each weight/height combo (mu_i). Also, for each observation, we want the distribution of the predicted value for each weight/height combo (y_i). The latter will have a wider variance. The *normal_rng* function is used to sample from the likelihood.
+The optional *generated quantities block* provides other quantities in the output, IE. other posterior distributions. There are generally two outputs we're interested in: the expectations and the predictions. For each observation, we want the distribution of the expectation for each weight/height combo (mu_i). Also, for each observation, we want the distribution of the predicted value for each weight/height combo (y_i). The latter will have a wider variance. The *normal_rng* function is used to sample from the likelihood.
 
 ```{r}
 setwd("./2. linear regression")
 writeLines(readLines("linear_regression.stan"))
 ```
 
-Time to execute the model. We can set the seed, the number of chains, the number of warmups and the number of iterations. Note that the number of posterior samples is equal to the number of iterations minus the number of warmups, in this case, 9000. Stan runs in C (C is fast) and R stores the output of the model in the Stan object called "fit". Let's sample from the posterior!
+Time to execute the model. We can set the seed, the number of chains, the number of warm-ups and the number of iterations. Note that the number of posterior samples is equal to the number of iterations minus the number of warm-ups, in this case, 9000. Stan runs in C (C is fast) and R stores the output of the model in the Stan object called "fit". Let's sample from the posterior!
 
 ```{r}
 setwd("./2. linear regression")
@@ -221,7 +221,7 @@ shade( mu.PI , weight.seq ) # plot a shaded region for 89% HPDI
 
 #### Univariate Conditional Distribution for the Expectation of Y
 
-You can also use the link function to plot the univariate distribution for a given value of x.
+You can also use the link function to plot the uni-variate distribution for a given value of x.
 
 ```{r}
 mu.link <- function(weight) posterior$a + posterior$b*( weight - xbar )
@@ -287,7 +287,7 @@ abline(v=y.80.mean)
 
 (Rethinking, Chapter 5)
 
-Correlation between predictors is the norm. Multiple regression is about distinguising correlations and assoication from evidence for causation. This means building DAGs, thinking about confounders, etc.
+Correlation between predictors is the norm. Multiple regression is about distinguishing correlations and association from evidence for causation. This means building DAGs, thinking about confounders, etc.
 
 ##Data
 
@@ -324,13 +324,13 @@ fit <- stan(file='stan_model.stan', data=data, seed=194838, chains = 1, warmup=1
 
 ## Analysis
 
-With multivariate regression, there are three additional types of plots: predictor residual plots, counterfactual plots and posterior predictive plots. These plots focus on the ability to "statistically control" variables within a model.
+With multivariate regression, there are three additional types of plots: predictor residual plots, counter factual plots and posterior predictive plots. These plots focus on the ability to "statistically control" variables within a model.
 
 ### Predictor Residual Plot
 
 A **predictor residual plot** (PRP) plots the residuals for a single predictor against the response. A PRP shows the average prediction error after statistically adjusting for the predictor(s) of interest. You can think of it as a residual plot where you select which variables are endogenous to the model. It allows you to measure the "ceteris paribus" association between a predictor(s) and the response. 
 
-To compute the predictor residuals, re-run the model excluding the predictor(s) of interest. In the example below, we want to see the "ceteris paribus" response of the divorce rate to the state-level marriage proportion, adjusting for the median age of marraige.
+To compute the predictor residuals, re-run the model excluding the predictor(s) of interest. In the example below, we want to see the "ceteris paribus" response of the divorce rate to the state-level marriage proportion, adjusting for the median age of marriage.
 
 ```{r}
 setwd("./3. Multivariate Continuous")
@@ -340,7 +340,7 @@ fit2 <- stan(file='stan_model2.stan', data=data, seed=194838, chains = 1, warmup
 
 We use a link function to plug in our data and calculate the mean effect of the median age of marriage in each state. Then - and this is key - we subtract this mean effect from the state-level marriage proportion to create the predictor residuals.
 
-We then plot the divorce rate against the predictor residuals, along with a line of best fit and a regression (ie. confidence) interval. You can think of the plot as a 2 x 2 matrix, for example, states to the right of the vertical line and above the regression line have higher marriage rates than expected and higher divorce rates. Overall, we do not see a strong association between state-level marriage proportions and divorce rates. (Note: there is a misalignment in the regression line and the regression interval- not sure why.)
+We then plot the divorce rate against the predictor residuals, along with a line of best fit and a regression (IE. confidence) interval. You can think of the plot as a 2 x 2 matrix, for example, states to the right of the vertical line and above the regression line have higher marriage rates than expected and higher divorce rates. Overall, we do not see a strong association between state-level marriage proportions and divorce rates. (Note: there is a misalignment in the regression line and the regression interval- not sure why.)
 
 
 ```{r}
@@ -362,9 +362,9 @@ abline(v = 0, lty = 2)
 
 ###Counterfactual Plots
 
-At its simplist level, a **counterfactual plot** is similar to a predictor residual plot in that is allows for statistical control of the other predictor(s). The only difference is that instead of looking at the residuals, we look at the "ceteris paribus" effect of the predictor on the value of the response.
+At its simplest level, a **counterfactual plot** is similar to a predictor residual plot in that is allows for statistical control of the other predictor(s). The only difference is that instead of looking at the residuals, we look at the "ceteris paribus" effect of the predictor on the value of the response.
 
-In order to create a counterfactual plot, we set the "controlled for" variables as equal to the mean response, or, if the data is standardized, 0. For the "ceteris paribus" variable(s), we can take as inputs the available data, or unobserved/impossible extrapolations, etc.
+In order to create a counter factual plot, we set the "controlled for" variables as equal to the mean response, or, if the data is standardized, 0. For the "ceteris paribus" variable(s), we can take as inputs the available data, or unobserved/impossible extrapolations, etc.
 
 ```{r}
 posterior <- as.data.frame(fit)
@@ -467,7 +467,7 @@ plot(fit, pars = c("a", "sigma"), ci_level = .8, outer_level = 0.95, show_densit
 ```
 
 
-#MLM- Varying Intercepts
+#Multi-Level Models- Varying Intercepts
 
 Rethinking Chapter 13. This also serves as an introduction to the logistic regression in Stan.
 
@@ -546,7 +546,7 @@ text( 32+8 , 0 , "large tanks" )
 
 ### MLM/Logistic Posterior Predictive Distribution
 
-For normal regressions, we would see some version of a posterior regression plot with different intercepts and identical slopes. In the cast of a logistic regression, we want to know the probability of survival for each group. The first plot gives us just that- the log-odds of survival for each tank by referencing the varying intercepts. The second plot shows the *probability* of survival for the population of tanks by referncing the hyperparameters. 
+For normal regressions, we would see some version of a posterior regression plot with different intercepts and identical slopes. In the cast of a logistic regression, we want to know the probability of survival for each group. The first plot gives us just that- the log-odds of survival for each tank by referencing the varying intercepts. The second plot shows the *probability* of survival for the population of tanks by referencing the hyperparameters. 
 
 In addition, you can use a link function to generate predictions for different clusters, including those that don't exist.
 

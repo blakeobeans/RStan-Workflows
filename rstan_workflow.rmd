@@ -115,7 +115,7 @@ setwd("./2. linear regression")
 fit <- stan(file='linear_regression.stan', data=data, seed=194838, chains = 1, warmup=1000, iter=10000)
 ```
 
-##Model Checking
+## Analysis
 
 Stanfit objects are lists that contain lots of information, but primarily they are just samples from the posterior.
 
@@ -322,7 +322,7 @@ setwd("./3. Multivariate Continuous")
 fit <- stan(file='stan_model.stan', data=data, seed=194838, chains = 1, warmup=1000, iter=10000)
 ```
 
-## Model Checking
+## Analysis
 
 With multivariate regression, there are three additional types of plots: predictor residual plots, counterfactual plots and posterior predictive plots. These plots focus on the ability to "statistically control" variables within a model.
 
@@ -421,10 +421,11 @@ for ( i in 1:nrow(d) ) lines( rep(scale(d$Divorce)[i],2) , mu_PI[,i] , col=rangi
 ```
 
 
-#Multivariate Regression with a Single Categorical Variable
+#Regression with a Categorical Variable
+
+(Rethinking Ch 5.3.2. "Many Categories")
 
 Data is on different kinds of monkeys ("clade") and the kilocalories of milk. 
-
 
 ##Data
 
@@ -453,61 +454,26 @@ writeLines(readLines("categorical.stan"))
 
 ```{r}
 setwd("./5. Single Categorical")
-fit <- stan(file='categorical.stan', data=data, seed=194838, 
-            chains = 1, warmup=1000, iter=10000)
+fit <- stan(file='categorical.stan', data=data, seed=194838, chains = 1, warmup=1000, iter=10000)
 ```
 
 ##Analysis
 
+Unlike standard regression, we get an effect size for all categories.
+
 ```{r}
-posterior <- as.data.frame(fit)
-print(fit, c("sigma", "a"))
 plot(fit, pars = c("a", "sigma"), ci_level = .8, outer_level = 0.95, show_density = TRUE) + 
   ggtitle("Posterior Distribution of Coefficients")
 ```
 
-#Instrumental Variables
 
-From chapter 8.
+#MLM- Varying Intercepts
 
-##Data
-```{r}
-setwd("./7. Instrumental Variables")
-set.seed(73)
-N <- 200
-U <- rnorm( N ) #U not actually included as data
-Q <- rbern( N , prob=0.25 ) #out of rethinking package...
-E <- rnorm( N , U - Q ) #E is a fn of U
-W <- rnorm( N , U + 0*E ) #W is a fn of U
-id <- 1:N #dummy index for person
-stan_rdump(c("N", "Q", "E", "W", "id"), file="iv_reg.data.R")
-data <- read_rdump("iv_reg.data.R")
-```
-
-##Model
-```{r}
-setwd("./7. Instrumental Variables")
-writeLines(readLines("iv_code.stan"))
-```
-
-Fit model
-
-```{r}
-setwd("./7. Instrumental Variables")
-fit <- stan(file='iv_code.stan', data=data, chains = 1, warmup=1000, iter=10000)
-```
-
-##Analysis
-
-```{r}
-print(fit, c("aW", "bEW", "sigmaW", "aE", "bQE", "sigmaE"))
-```
-
-#Multi-level Model
-
-
+Rethinking Chapter 13. This also serves as an introduction to the logistic regression in Stan.
 
 ##Data
+
+The data are on the number of tadpoles that survive ("surv") in each tank ("tank"). The number of tadpoles in each tank at the beginning is the density. There are 48 tanks. The varying intercepts model will be at the tank variable. There are 48 tanks, so there will be 48 varying effects. We should assume that, while each tank is different, they are not independent, so a MLM will fit nicely.
 
 ```{r}
 setwd("./13. Multi-Level Models")
@@ -524,16 +490,20 @@ data <- read_rdump("linear_reg.data.R")
 
 ##Stan Model
 
+It is worth noting the difference between a standard regression and multi-level regression at the level of the code. In the standard regression, all "varying intercept" coefficients for the categorical variable have the same normal prior, a_tank ~ normal(0,5). No information is shared among the coefficients.  
+
+Because this is a logistic regression, the likelihood is a *binomial_logit* function with density_i and p_i.
+
 ```{r}
 setwd("./13. Multi-Level Models")
 writeLines(readLines("m12_1.stan"))
 ```
 
-It is worth noting the difference between a standard regression and multi-level regression at the level of the code. 
+In the multi-level model, the prior has a **hyperprior** (an "adaptive regularizing prior"), a_tank ~ N(alpha,sigma), with two **hyperparameters**, a and sigma. Note that the hyperparameters are defined in the parameters block and that each of the hyper parameters have their own prior as well. 
 
-In the standard regression, all "varying intercept" coefficients for the categorical variable have the same normal prior. Thus, no information is shared among the coefficients.  
+Stan "partially pools" the information among tanks by simultaneously determining the intercepts for each tank AND the hyperparameters of the hyperprior. The estimated hyperparameters represent what is learned about the population of tanks.
 
-In the multi-level model, the prior has a hyperprior (an "adaptive regularizing prior"), a_tank ~ N(alpha,sigma), with two hyperparameters, a and sigma. The hyperprior models the population of all groups- it makes explicit that all of the intercepts come from the same population. In order to determine the value of the hyperparameters, information from all of the varying intercepts must be pooled. This is done simultaneously with determining the varying intercepts, brought to you by MCMC.
+For multiple clusters (say, tank and size), simply add another varying intercept coefficient, a hyperprior and hyperparameters.
 
 ```{r}
 setwd("./13. Multi-Level Models")
@@ -548,6 +518,48 @@ fit <- stan(file='stan_script.stan', data=data, chains = 1, warmup=1000, iter=10
 ##Analysis
 
 ```{r}
-print(fit, c("a", "sigma"))
+post <- as.data.frame(fit) 
+```
+
+### Shrinkage Plot
+
+```{r}
+# display raw proportions surviving in each tank
+plot( d$propsurv , ylim=c(0,1) , pch=16 , xaxt="n" ,
+xlab="tank" , ylab="proportion survival" , col=rangi2 )
+axis( 1 , at=c(1,16,32,48) , labels=c(1,16,32,48) )
+# compute median intercept for each tank
+# also transform to probability with logistic
+TEMP<- logistic( apply( post, 2 , median ) )
+TEMP <- TEMP[1:48]
+# overlay posterior medians
+points( TEMP)
+# mark posterior median probability across tanks
+abline( h=logistic(median(post$a)) , lty=2 )
+# draw vertical dividers between tank densities
+abline( v=16.5 , lwd=0.5 )
+abline( v=32.5 , lwd=0.5 )
+text( 8 , 0 , "small tanks" )
+text( 16+8 , 0 , "medium tanks" )
+text( 32+8 , 0 , "large tanks" )
+```
+
+### MLM/Logistic Posterior Predictive Distribution
+
+For normal regressions, we would see some version of a posterior regression plot with different intercepts and identical slopes. In the cast of a logistic regression, we want to know the probability of survival for each group. The first plot gives us just that- the log-odds of survival for each tank by referencing the varying intercepts. The second plot shows the *probability* of survival for the population of tanks by referncing the hyperparameters. 
+
+In addition, you can use a link function to generate predictions for different clusters, including those that don't exist.
+
+```{r}
+# show first 100 populations in the posterior
+plot( NULL , xlim=c(-3,4) , ylim=c(0,0.35) ,
+xlab="log-odds survive" , ylab="Density" )
+for ( i in 1:100 )
+curve( dnorm(x,post$a[i],post$sigma[i]) , add=TRUE ,
+col=col.alpha("black",0.2) )
+# sample 8000 imaginary tanks from the posterior distribution
+sim_tanks <- rnorm( 8000 , post$a , post$sigma )
+# transform to probability and visualize
+dens( logistic(sim_tanks) , xlab="probability survive" )
 ```
 
